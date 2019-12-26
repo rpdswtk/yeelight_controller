@@ -54,13 +54,14 @@ class LightBulb:
             'set_power',
             ['off', 'smooth', 500]
         )
-        print(msg)
         self.__send_message(msg)
 
     def __send_message(self, msg):
         try:
-            print('SENDING MESSAGE: '.format(msg))
+            print('SENDING MESSAGE: '.format(msg.decode()))
             self.__sock.send(msg)
+            data, server = self.__sock.recvfrom(50)
+            print('RESPONSE: {}'.format(data.decode()))
             data, server = self.__sock.recvfrom(50)
             print('RESPONSE: {}'.format(data.decode()))
         except socket.timeout:
