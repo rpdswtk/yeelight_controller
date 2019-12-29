@@ -1,6 +1,5 @@
 import socket
 import struct
-import parsers
 import json
 
 MULTICAST_IP = '239.255.255.250'
@@ -32,6 +31,8 @@ class LightBulb:
         self.ip = loc.split(':')[0]
         self.port = int(loc.split(':')[1])
         self.__sock = None
+        self.effect = 'smooth'
+        self.duration = 500
 
     def __repr__(self):
         return 'ID: {} at {}'.format(self.id, self.location)
@@ -45,24 +46,61 @@ class LightBulb:
     def turn_on(self):
         msg = self.__create_message(
             'set_power',
-            ['on', 'smooth', 500]
+            ['on', self.effect, self.duration]
         )
         self.__send_message(msg)
 
     def turn_off(self):
         msg = self.__create_message(
             'set_power',
-            ['off', 'smooth', 500]
+            ['off', self.effect, self.duration]
+        )
+        self.__send_message(msg)
+
+    def set_brightness(self, brigthness):
+        msg = self.__create_message(
+            'set_bright',
+            [brigthness, self.effect, self.duration]
+        )
+        self.__send_message(msg)
+
+    def toggle(self):
+        msg = self.__create_message(
+            'toggle',
+            []
+        )
+        self.__send_message(msg)
+
+    def set_temperature(self, color_temp):
+        msg = self.__create_message(
+            'set_ct_abx',
+            [color_temp, self.effect, self.duration]
+        )
+        self.__send_message(msg)
+
+    def set_rgb(self, r, g, b):
+        color = r * 65536 + g * 256 + b
+        msg = self.__create_message(
+            'set_rgb',
+            [color, self.effect, self.duration]
+        )
+        self.__send_message(msg)
+
+    def set_hsv(self, hue, sat):
+        msg = self.__create_message(
+            'set_hsv',
+            [hue, sat, self.effect, self.duration]
         )
         self.__send_message(msg)
 
     def __send_message(self, msg):
         try:
-            print('SENDING MESSAGE: '.format(msg.decode()))
+            print('SENDING MESSAGE:')
+            print(msg.decode())
             self.__sock.send(msg)
-            data, server = self.__sock.recvfrom(50)
+            data, server = self.__sock.recvfrom(100)
             print('RESPONSE: {}'.format(data.decode()))
-            data, server = self.__sock.recvfrom(50)
+            data, server = self.__sock.recvfrom(100)
             print('RESPONSE: {}'.format(data.decode()))
         except socket.timeout:
             print('TIMEOUT')
@@ -75,6 +113,21 @@ class LightBulb:
             'params': params
         }
         return (json.dumps(msg) + '\r\n').encode()
+
+    @staticmethod
+    def parse_search_response(message):
+        if isinstance(message, bytes):
+            message = message.decode()
+        rows = message.split('\r\n')
+        headers = dict()
+        if rows[0] == 'HTTP/1.1 200 OK':
+            for row in rows:
+                s = row.split(': ')
+                if len(s) == 2:
+                    header_name = s[0].lower()
+                    header_value = s[1]
+                    headers[header_name] = header_value
+        return headers
 
     @staticmethod
     def discover():
@@ -99,7 +152,7 @@ class LightBulb:
                     # print('Received message: {}'.format(data.decode()))
 
                     discovered = True
-                    parsed_msg = parsers.parse_search_response(data)
+                    parsed_msg = LightBulb.parse_search_response(data)
                     new_device = LightBulb(
                         id=parsed_msg['id'],
                         location=parsed_msg['location'],
