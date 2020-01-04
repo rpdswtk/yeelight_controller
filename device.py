@@ -100,8 +100,10 @@ class LightBulb:
             self.__sock.send(msg)
             data, server = self.__sock.recvfrom(100)
             print('RESPONSE: {}'.format(data.decode()))
+            self.__process_response(data)
             data, server = self.__sock.recvfrom(100)
             print('RESPONSE: {}'.format(data.decode()))
+            self.__process_response(data)
         except socket.timeout:
             print('TIMEOUT')
 
@@ -129,6 +131,31 @@ class LightBulb:
                     headers[header_name] = header_value
         return headers
 
+    def __process_response(self, message):
+        data = json.loads(message.decode())
+        # only processing responses containing property values
+        if 'method' in data and data['method'] == 'props':
+            for param in data['params']:
+                print(param)
+                value = data['params'][param]
+                print(value)
+                if param == 'rgb':
+                    self.rgb = value
+                elif param == 'hue':
+                    self.hue = value
+                elif param == 'power':
+                    self.power = value
+                elif param == 'bright':
+                    self.brightness = value
+                elif param == 'ct':
+                    self.color_temperature = value
+                elif param == 'color_mode':
+                    self.color_mode = value
+                elif param == 'hue':
+                    self.hue = value
+                elif param == 'sat':
+                    self.saturation = value
+
     @staticmethod
     def discover():
         hostname = socket.gethostname()
@@ -149,8 +176,6 @@ class LightBulb:
                 except socket.timeout:
                     print('TIMEOUT')
                 else:
-                    # print('Received message: {}'.format(data.decode()))
-
                     discovered = True
                     parsed_msg = LightBulb.parse_search_response(data)
                     new_device = LightBulb(
