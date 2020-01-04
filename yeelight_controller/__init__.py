@@ -95,14 +95,11 @@ class LightBulb:
 
     def __send_message(self, msg):
         try:
-            print('SENDING MESSAGE:')
-            print(msg.decode())
+            print('SENDING MESSAGE: ' + msg.decode())
             self.__sock.send(msg)
             data, server = self.__sock.recvfrom(100)
-            print('RESPONSE: {}'.format(data.decode()))
             self.__process_response(data)
             data, server = self.__sock.recvfrom(100)
-            print('RESPONSE: {}'.format(data.decode()))
             self.__process_response(data)
         except socket.timeout:
             print('TIMEOUT')
@@ -135,10 +132,9 @@ class LightBulb:
         data = json.loads(message.decode())
         # only processing responses containing property values
         if 'method' in data and data['method'] == 'props':
+            print('RESPONSE: {}'.format(data))
             for param in data['params']:
-                print(param)
                 value = data['params'][param]
-                print(value)
                 if param == 'rgb':
                     self.rgb = value
                 elif param == 'hue':

@@ -1,5 +1,4 @@
-from device import LightBulb
-import time
+from yeelight_controller import LightBulb
 
 if __name__ == "__main__":
     device = LightBulb.discover()
