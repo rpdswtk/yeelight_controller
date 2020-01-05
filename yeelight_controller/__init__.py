@@ -33,6 +33,7 @@ class LightBulb:
         self.__sock = None
         self.effect = 'smooth'
         self.duration = 500
+        self.connect()
 
     def __repr__(self):
         return 'ID: {} at {}'.format(self.id, self.location)
@@ -42,6 +43,7 @@ class LightBulb:
             self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.__sock.connect((self.ip, self.port))
             self.__sock.settimeout(3)
+        print('CONNECTED')
 
     def turn_on(self):
         msg = self.__create_message(
