@@ -34,53 +34,68 @@ class LightBulb:
         self.effect = 'smooth'
         self.duration = 500
         self.connect()
+        self.__host_address = '0.0.0.0'
 
     def __repr__(self):
         return 'ID: {} at {}'.format(self.id, self.location)
 
+
     def connect(self):
+        """Connects to light bulb."""
         if self.__sock is None:
             self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.__sock.connect((self.ip, self.port))
             self.__sock.settimeout(3)
         print('CONNECTED')
 
+
     def turn_on(self):
+        """Turns on the light bulb."""
         msg = self.__create_message(
             'set_power',
             ['on', self.effect, self.duration]
         )
         self.__send_message(msg)
 
+
     def turn_off(self):
+        """Turns on the light bulb."""
         msg = self.__create_message(
             'set_power',
             ['off', self.effect, self.duration]
         )
         self.__send_message(msg)
 
+
     def set_brightness(self, brigthness):
+        """Sets the brightness."""
         msg = self.__create_message(
             'set_bright',
             [brigthness, self.effect, self.duration]
         )
         self.__send_message(msg)
 
+
     def toggle(self):
+        """Toggles the device's state."""
         msg = self.__create_message(
             'toggle',
             []
         )
         self.__send_message(msg)
 
+
     def set_temperature(self, color_temp):
+        """Sets the color temperature of the device."""
         msg = self.__create_message(
             'set_ct_abx',
             [color_temp, self.effect, self.duration]
         )
         self.__send_message(msg)
 
+
     def set_rgb(self, r, g, b):
+        """Sets RGB values."""
         color = r * 65536 + g * 256 + b
         msg = self.__create_message(
             'set_rgb',
@@ -88,14 +103,18 @@ class LightBulb:
         )
         self.__send_message(msg)
 
+
     def set_hsv(self, hue, sat):
+        """Sets hsv."""
         msg = self.__create_message(
             'set_hsv',
             [hue, sat, self.effect, self.duration]
         )
         self.__send_message(msg)
 
+
     def __send_message(self, msg):
+        """Sends message to the device."""
         try:
             print('SENDING MESSAGE: ' + msg.decode())
             self.__sock.send(msg)
@@ -106,7 +125,9 @@ class LightBulb:
         except socket.timeout:
             print('TIMEOUT')
 
+
     def __create_message(self, method_name, params):
+        """Creates message for the device."""
         LightBulb.current_message_id += 1
         msg = {
             'id': LightBulb.current_message_id,
@@ -115,8 +136,10 @@ class LightBulb:
         }
         return (json.dumps(msg) + '\r\n').encode()
 
+
     @staticmethod
     def parse_search_response(message):
+        """Parses response to discovery multicast message."""
         if isinstance(message, bytes):
             message = message.decode()
         rows = message.split('\r\n')
@@ -131,6 +154,7 @@ class LightBulb:
         return headers
 
     def __process_response(self, message):
+        """Parsers response mesage."""
         data = json.loads(message.decode())
         # only processing responses containing property values
         if 'method' in data and data['method'] == 'props':
@@ -154,14 +178,14 @@ class LightBulb:
                 elif param == 'sat':
                     self.saturation = value
 
-    @staticmethod
-    def discover():
-        hostname = socket.gethostname()
-        ip = socket.gethostbyname(hostname)
 
+    @staticmethod
+    def discover(host_ip='0.0.0.0'):
+        """Discovers a LightBulb on the network."""
+        hostname = socket.gethostname()
         discovered = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((ip, PORT))
+        sock.bind((host_ip, PORT))
         sock.settimeout(3)
         ttl = struct.pack('b', 1)
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)

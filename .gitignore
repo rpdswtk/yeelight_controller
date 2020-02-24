@@ -4,3 +4,4 @@ __pycache__/
 dist/
 yeelight_control.egg-info/
 build/
+env/
