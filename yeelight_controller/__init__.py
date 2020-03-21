@@ -205,9 +205,8 @@ class LightBulb:
 
 
     @staticmethod
-    def discover(host_ip='0.0.0.0'):
+    def discover(host_ip):
         """Discovers a LightBulb on the network."""
-        #hostname = socket.gethostname()
         discovered = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((host_ip, PORT))
