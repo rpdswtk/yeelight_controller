@@ -46,7 +46,7 @@ class LightBulb:
         self.connect()
         self.__host_address = '0.0.0.0'
 
-                                                                                           
+
     def __repr__(self):
         return 'ID: {} at {}'.format(self.device_id, self.location)
 
@@ -132,10 +132,12 @@ class LightBulb:
         try:
             self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
             self.__sock.send(msg)
-            data, _ = self.__sock.recvfrom(100)
-            self.__process_response(data)
-            data, _ = self.__sock.recvfrom(100)
-            self.__process_response(data)
+            data, _ = self.__sock.recvfrom(1024)
+            # handling multiple json formatted messages
+            messages = data.decode().split('\r\n')
+            for message in messages:
+                if message:
+                    self.__process_response(message)
         except socket.timeout:
             self.log.debug("TIMEOUT")
 
@@ -168,9 +170,13 @@ class LightBulb:
         return headers
 
 
-    def __process_response(self, message):
+    def __process_response(self, message: str):
         """Parsers response mesage."""
-        data = json.loads(message.decode())
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            self.log.error("Unexpected response message: %s", message)
+            return
         # only processing responses containing property values
         if 'method' in data and data['method'] == 'props':
             self.log.debug('RESPONSE: %s', data)
@@ -192,6 +198,8 @@ class LightBulb:
                     self.hue = value
                 elif param == 'sat':
                     self.saturation = value
+        elif 'error' in data:
+            self.log.warning("Error response received: %s", data)
 
 
     @staticmethod
