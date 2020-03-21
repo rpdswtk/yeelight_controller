@@ -1,3 +1,4 @@
+from __future__ import annotations
 import socket
 import struct
 import json
@@ -67,7 +68,7 @@ class LightBulb:
 
 
     def turn_on(self):
-        """Turns on the light bulb."""
+        """Turns on the lightbulb."""
         msg = self.__create_message(
             'set_power',
             ['on', self.effect, self.duration]
@@ -76,7 +77,7 @@ class LightBulb:
 
 
     def turn_off(self):
-        """Turns on the light bulb."""
+        """Turns on the lightbulb."""
         msg = self.__create_message(
             'set_power',
             ['off', self.effect, self.duration]
@@ -84,11 +85,15 @@ class LightBulb:
         self.__send_message(msg)
 
 
-    def set_brightness(self, brigthness):
-        """Sets the brightness."""
+    def set_brightness(self, brightness: int):
+        """Sets the brightness.
+
+        Arguments:
+            brightness {int} -- Brightness in percentage.
+        """
         msg = self.__create_message(
             'set_bright',
-            [brigthness, self.effect, self.duration]
+            [brightness, self.effect, self.duration]
         )
         self.__send_message(msg)
 
@@ -102,8 +107,12 @@ class LightBulb:
         self.__send_message(msg)
 
 
-    def set_temperature(self, color_temp):
-        """Sets the color temperature of the device."""
+    def set_temperature(self, color_temp: int):
+        """Sets the color temperature of the device.
+
+        Arguments:
+            color_temp {int} -- Color temperature. Range: 1700 - 6500.
+        """
         msg = self.__create_message(
             'set_ct_abx',
             [color_temp, self.effect, self.duration]
@@ -111,9 +120,15 @@ class LightBulb:
         self.__send_message(msg)
 
 
-    def set_rgb(self, r, g, b):
-        """Sets RGB values."""
-        color = r * 65536 + g * 256 + b
+    def set_rgb(self, red: int, green: int, blue: int):
+        """Sets the color in RGB values.
+
+        Arguments:
+            red {int} -- Red intensity. Range: 0-255
+            green {int} -- Green intensity. Range: 0-255
+            blue {int} -- Blue intensity. Range: 0-255
+        """
+        color = red * 65536 + green * 256 + blue
         msg = self.__create_message(
             'set_rgb',
             [color, self.effect, self.duration]
@@ -121,8 +136,13 @@ class LightBulb:
         self.__send_message(msg)
 
 
-    def set_hsv(self, hue, sat):
-        """Sets hsv."""
+    def set_hsv(self, hue: int, sat: int):
+        """Sets the color in HSV.
+
+        Arguments:
+            hue {int} -- Range: 0 - 359
+            sat {int} -- Range: 0 - 100 (%)
+        """
         msg = self.__create_message(
             'set_hsv',
             [hue, sat, self.effect, self.duration]
@@ -130,8 +150,12 @@ class LightBulb:
         self.__send_message(msg)
 
 
-    def __send_message(self, msg):
-        """Sends message to the device."""
+    def __send_message(self, msg: bytes):
+        """Sends message to device.
+
+        Arguments:
+            msg {bytes} -- Message encoded in bytes.
+        """
         try:
             self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
             self.__sock.send(msg)
@@ -145,8 +169,17 @@ class LightBulb:
             self.log.debug("TIMEOUT")
 
 
-    def __create_message(self, method_name, params):
-        """Creates message for the device."""
+    @staticmethod
+    def __create_message(method_name: str, params: list) -> bytes:
+        """Creates message for device.
+
+        Arguments:
+            method_name {str}
+            params {list}
+
+        Returns:
+            bytes -- Encoded message.
+        """
         LightBulb.current_message_id += 1
         msg = {
             'id': LightBulb.current_message_id,
@@ -157,24 +190,36 @@ class LightBulb:
 
 
     @staticmethod
-    def parse_search_response(message):
-        """Parses response to discovery multicast message."""
-        if isinstance(message, bytes):
-            message = message.decode()
-        rows = message.split('\r\n')
+    def parse_search_response(message: bytes) -> dict:
+        """Parses response to discovery multicast message.
+           Extracts headers from response message.
+
+        Arguments:
+            message {bytes} -- Response message.
+
+        Returns:
+            dict -- Dictionary containing headers.
+        """
+        decoded = message.decode()
+        rows = decoded.split('\r\n')
         headers = dict()
         if rows[0] == 'HTTP/1.1 200 OK':
             for row in rows:
-                s = row.split(': ')
-                if len(s) == 2:
-                    header_name = s[0].lower()
-                    header_value = s[1]
+                splitted = row.split(': ')
+                if len(splitted) == 2:
+                    header_name = splitted[0].lower()
+                    header_value = splitted[1]
                     headers[header_name] = header_value
         return headers
 
 
     def __process_response(self, message: str):
-        """Parsers response mesage."""
+        """Parses response message.
+           Stores property values received.
+
+        Arguments:
+            message {str} -- Response message.
+        """
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
@@ -208,13 +253,23 @@ class LightBulb:
 
 
     @staticmethod
-    def discover(host_ip, search_timeout=20):
-        """Discovers one LightBulb on the network."""
+    def discover(host_ip: str, search_timeout: int=20) -> LightBulb:
+        """Discovers one device on network.
+
+        Arguments:
+            host_ip {str} -- Ip address of host machine.
+
+        Keyword Arguments:
+            search_timeout {int} -- Search timeout in seconds. (default: {20})
+
+        Returns:
+            LightBulb -- LightBulb object.
+        """
         discovered = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((host_ip, MULTICAST_PORT))
         sock.settimeout(3)
-        ttl = struct.pack('b', 1)
+        ttl = struct.pack('b', 5)
         started_searching = time.time()
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         try:
