@@ -2,13 +2,17 @@ import socket
 import struct
 import json
 import logging
+import time
 
 MULTICAST_IP = '239.255.255.250'
-PORT = 1982
+MULTICAST_PORT = 1982
 SEARCH_MESSAGE = '''M-SEARCH * HTTP/1.1\r\n
 HOST: 239.255.255.250:1982\r\n
 MAN: "ssdp:discover"\r\n
 ST: wifi_bulb\r\n'''
+
+CONTROL_PORT = 55443
+
 
 # default logging
 logging.basicConfig(level=logging.DEBUG,
@@ -18,16 +22,16 @@ DEFAULT_LOGGER = logging.getLogger("YEELIGHT CONTROLLER")
 
 
 class LightBulb:
+    """Yeelight lightbulb handler."""
     current_message_id = 0
 
-    def __init__(self, location, device_id=None, power=None, brightness=None, color_mode=None,
+    def __init__(self, ip_address, device_id=None, power=None, brightness=None, color_mode=None,
                  color_temperature=None, rgb=None, hue=None, saturation=None, name=None,
                  fw_ver=None, log=None):
         self.device_id = device_id
         self.log = DEFAULT_LOGGER
         if log is not None:
             self.log = log
-        self.location = location
         self.power = power
         self.brightness = brightness
         self.color_mode = color_mode
@@ -37,9 +41,8 @@ class LightBulb:
         self.saturation = saturation
         self.name = name
         self.fw_ver = fw_ver
-        loc = location.split('//')[1]
-        self.ip_address = loc.split(':')[0]
-        self.port = int(loc.split(':')[1])
+        self.ip_address = ip_address
+        self.port = CONTROL_PORT
         self.__sock = None
         self.effect = 'smooth'
         self.duration = 500
@@ -48,7 +51,7 @@ class LightBulb:
 
 
     def __repr__(self):
-        return 'ID: {} at {}'.format(self.device_id, self.location)
+        return 'ID: {} at {}'.format(self.device_id, self.ip_address)
 
 
     def connect(self):
@@ -205,28 +208,35 @@ class LightBulb:
 
 
     @staticmethod
-    def discover(host_ip):
-        """Discovers a LightBulb on the network."""
+    def discover(host_ip, search_timeout=20):
+        """Discovers one LightBulb on the network."""
         discovered = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((host_ip, PORT))
+        sock.bind((host_ip, MULTICAST_PORT))
         sock.settimeout(3)
         ttl = struct.pack('b', 1)
+        started_searching = time.time()
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         try:
             while not discovered:
                 DEFAULT_LOGGER.debug('Sending multicast message')
-                sock.sendto(SEARCH_MESSAGE.encode(), (MULTICAST_IP, PORT))
+                sock.sendto(SEARCH_MESSAGE.encode(), (MULTICAST_IP, MULTICAST_PORT))
                 try:
                     data, _ = sock.recvfrom(1024)
                 except socket.timeout:
-                    DEFAULT_LOGGER.debug('TIMEOUT')
+                    DEFAULT_LOGGER.debug('SOCKET TIMEOUT')
+                    if time.time() - started_searching >= search_timeout:
+                        DEFAULT_LOGGER.error("COULD NOT FIND DEVICE")
+                        return None
                 else:
                     discovered = True
                     parsed_msg = LightBulb.parse_search_response(data)
+
+                    ip = parsed_msg["location"].split("//")[1].split(':')[0]
+
                     new_device = LightBulb(
                         device_id=parsed_msg['id'],
-                        location=parsed_msg['location'],
+                        ip_address=ip,
                         power=parsed_msg['power'],
                         brightness=parsed_msg['bright'],
                         color_mode=parsed_msg['color_mode'],
