@@ -1,6 +1,7 @@
 import socket
 import struct
 import json
+import logging
 
 MULTICAST_IP = '239.255.255.250'
 PORT = 1982
@@ -9,14 +10,23 @@ HOST: 239.255.255.250:1982\r\n
 MAN: "ssdp:discover"\r\n
 ST: wifi_bulb\r\n'''
 
+# default logging
+logging.basicConfig(level=logging.DEBUG,
+                    format="%(asctime)s %(levelname)s - [%(name)s] - %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
+DEFAULT_LOGGER = logging.getLogger("YEELIGHT CONTROLLER")
+
 
 class LightBulb:
     current_message_id = 0
 
-    def __init__(self, id, location, power, brightness, color_mode,
-                 color_temperature, rgb, hue, saturation, name=None,
-                 fw_ver=None):
-        self.id = id
+    def __init__(self, location, device_id=None, power=None, brightness=None, color_mode=None,
+                 color_temperature=None, rgb=None, hue=None, saturation=None, name=None,
+                 fw_ver=None, log=None):
+        self.device_id = device_id
+        self.log = DEFAULT_LOGGER
+        if log is not None:
+            self.log = log
         self.location = location
         self.power = power
         self.brightness = brightness
@@ -28,7 +38,7 @@ class LightBulb:
         self.name = name
         self.fw_ver = fw_ver
         loc = location.split('//')[1]
-        self.ip = loc.split(':')[0]
+        self.ip_address = loc.split(':')[0]
         self.port = int(loc.split(':')[1])
         self.__sock = None
         self.effect = 'smooth'
@@ -36,17 +46,21 @@ class LightBulb:
         self.connect()
         self.__host_address = '0.0.0.0'
 
+                                                                                           
     def __repr__(self):
-        return 'ID: {} at {}'.format(self.id, self.location)
+        return 'ID: {} at {}'.format(self.device_id, self.location)
 
 
     def connect(self):
         """Connects to light bulb."""
         if self.__sock is None:
             self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.__sock.connect((self.ip, self.port))
             self.__sock.settimeout(3)
-        print('CONNECTED')
+            try:
+                self.__sock.connect((self.ip_address, self.port))
+                self.log.debug('CONNECTED')
+            except socket.timeout:
+                self.log.error("COULD NOT CONNECT", exc_info=True)
 
 
     def turn_on(self):
@@ -116,14 +130,14 @@ class LightBulb:
     def __send_message(self, msg):
         """Sends message to the device."""
         try:
-            print('SENDING MESSAGE: ' + msg.decode())
+            self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
             self.__sock.send(msg)
-            data, server = self.__sock.recvfrom(100)
+            data, _ = self.__sock.recvfrom(100)
             self.__process_response(data)
-            data, server = self.__sock.recvfrom(100)
+            data, _ = self.__sock.recvfrom(100)
             self.__process_response(data)
         except socket.timeout:
-            print('TIMEOUT')
+            self.log.debug("TIMEOUT")
 
 
     def __create_message(self, method_name, params):
@@ -153,12 +167,13 @@ class LightBulb:
                     headers[header_name] = header_value
         return headers
 
+
     def __process_response(self, message):
         """Parsers response mesage."""
         data = json.loads(message.decode())
         # only processing responses containing property values
         if 'method' in data and data['method'] == 'props':
-            print('RESPONSE: {}'.format(data))
+            self.log.debug('RESPONSE: %s', data)
             for param in data['params']:
                 value = data['params'][param]
                 if param == 'rgb':
@@ -182,7 +197,7 @@ class LightBulb:
     @staticmethod
     def discover(host_ip='0.0.0.0'):
         """Discovers a LightBulb on the network."""
-        hostname = socket.gethostname()
+        #hostname = socket.gethostname()
         discovered = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((host_ip, PORT))
@@ -191,17 +206,17 @@ class LightBulb:
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
         try:
             while not discovered:
-                print('Sending multicast message')
+                DEFAULT_LOGGER.debug('Sending multicast message')
                 sock.sendto(SEARCH_MESSAGE.encode(), (MULTICAST_IP, PORT))
                 try:
-                    data, server = sock.recvfrom(1024)
+                    data, _ = sock.recvfrom(1024)
                 except socket.timeout:
-                    print('TIMEOUT')
+                    DEFAULT_LOGGER.debug('TIMEOUT')
                 else:
                     discovered = True
                     parsed_msg = LightBulb.parse_search_response(data)
                     new_device = LightBulb(
-                        id=parsed_msg['id'],
+                        device_id=parsed_msg['id'],
                         location=parsed_msg['location'],
                         power=parsed_msg['power'],
                         brightness=parsed_msg['bright'],
