@@ -198,6 +198,8 @@ class LightBulb:
                     self.hue = value
                 elif param == 'sat':
                     self.saturation = value
+        elif 'result' in data:
+            self.log.debug('RESPONSE: %s', data)
         elif 'error' in data:
             self.log.warning("Error response received: %s", data)
 
