@@ -11,6 +11,7 @@ SEARCH_MESSAGE = '''M-SEARCH * HTTP/1.1\r\n
 HOST: 239.255.255.250:1982\r\n
 MAN: "ssdp:discover"\r\n
 ST: wifi_bulb\r\n'''
+READ_DELAY = 1
 
 CONTROL_PORT = 55443
 
@@ -48,7 +49,6 @@ class LightBulb:
         self.effect = 'smooth'
         self.duration = 500
         self.connect()
-        self.__host_address = '0.0.0.0'
 
 
     def __repr__(self):
@@ -59,10 +59,11 @@ class LightBulb:
         """Connects to light bulb."""
         if self.__sock is None:
             self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.__sock.settimeout(3)
+            self.__sock.settimeout(5)
             try:
                 self.__sock.connect((self.ip_address, self.port))
                 self.log.debug('CONNECTED')
+                # TODO get props
             except socket.timeout:
                 self.log.error("COULD NOT CONNECT", exc_info=True)
 
@@ -74,6 +75,9 @@ class LightBulb:
             ['on', self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.power = 'on'
 
 
     def turn_off(self):
@@ -83,6 +87,9 @@ class LightBulb:
             ['off', self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.power = 'off'
 
 
     def set_brightness(self, brightness: int):
@@ -96,6 +103,9 @@ class LightBulb:
             [brightness, self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.brightness = brightness
 
 
     def toggle(self):
@@ -105,6 +115,12 @@ class LightBulb:
             []
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            if self.power == 'on':
+                self.power = 'off'
+            else:
+                self.power = 'on'
 
 
     def set_temperature(self, color_temp: int):
@@ -118,6 +134,9 @@ class LightBulb:
             [color_temp, self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.color_temperature = color_temp
 
 
     def set_rgb(self, red: int, green: int, blue: int):
@@ -134,6 +153,9 @@ class LightBulb:
             [color, self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.rgb = color
 
 
     def set_hsv(self, hue: int, sat: int):
@@ -148,6 +170,10 @@ class LightBulb:
             [hue, sat, self.effect, self.duration]
         )
         self.__send_message(msg)
+        response = self.__read_response()
+        if self.__get_result_from_response(response):
+            self.hue = hue
+            self.saturation = sat
 
 
     def __send_message(self, msg: bytes):
@@ -156,17 +182,48 @@ class LightBulb:
         Arguments:
             msg {bytes} -- Message encoded in bytes.
         """
+        self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
+        self.__sock.send(msg)
+
+
+    def __read_response(self) -> dict:
+        """Reads device respone.
+
+        Returns:
+            dict -- Response.
+        """
         try:
-            self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
-            self.__sock.send(msg)
-            data, _ = self.__sock.recvfrom(1024)
+            time.sleep(READ_DELAY)
+            data, _ = self.__sock.recvfrom(4048)
             # handling multiple json formatted messages
             messages = data.decode().split('\r\n')
             for message in messages:
                 if message:
-                    self.__process_response(message)
+                    data = json.loads(message)
+                    if 'id' in data and int(data['id']) == LightBulb.current_message_id:
+                        self.log.debug('RESPONSE RECEIVED %s', data)
+                        return data
+            return None
         except socket.timeout:
             self.log.debug("TIMEOUT")
+
+
+    def __get_result_from_response(self, response_message: dict) -> bool:
+        """Reads result from response message dictionary.
+           If response contains error it gets logged.
+
+        Arguments:
+            response_message {dict}
+
+        Returns:
+            bool -- True if message contains 'ok' result.
+        """
+        if 'result' in response_message and response_message['result'] == 'ok':
+            return True
+        else:
+            if 'error' in response_message:
+                self.log.error('ERROR RECEIVED %s', response_message)
+            return False
 
 
     @staticmethod
@@ -211,45 +268,6 @@ class LightBulb:
                     header_value = splitted[1]
                     headers[header_name] = header_value
         return headers
-
-
-    def __process_response(self, message: str):
-        """Parses response message.
-           Stores property values received.
-
-        Arguments:
-            message {str} -- Response message.
-        """
-        try:
-            data = json.loads(message)
-        except json.JSONDecodeError:
-            self.log.error("Unexpected response message: %s", message)
-            return
-        # only processing responses containing property values
-        if 'method' in data and data['method'] == 'props':
-            self.log.debug('RESPONSE: %s', data)
-            for param in data['params']:
-                value = data['params'][param]
-                if param == 'rgb':
-                    self.rgb = value
-                elif param == 'hue':
-                    self.hue = value
-                elif param == 'power':
-                    self.power = value
-                elif param == 'bright':
-                    self.brightness = value
-                elif param == 'ct':
-                    self.color_temperature = value
-                elif param == 'color_mode':
-                    self.color_mode = value
-                elif param == 'hue':
-                    self.hue = value
-                elif param == 'sat':
-                    self.saturation = value
-        elif 'result' in data:
-            self.log.debug('RESPONSE: %s', data)
-        elif 'error' in data:
-            self.log.warning("Error response received: %s", data)
 
 
     @staticmethod
