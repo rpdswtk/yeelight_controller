@@ -11,7 +11,6 @@ SEARCH_MESSAGE = '''M-SEARCH * HTTP/1.1\r\n
 HOST: 239.255.255.250:1982\r\n
 MAN: "ssdp:discover"\r\n
 ST: wifi_bulb\r\n'''
-READ_DELAY = 1
 
 CONTROL_PORT = 55443
 
@@ -29,21 +28,28 @@ class LightBulb:
     def __init__(self, ip_address, device_id=None, power=None, brightness=None, color_mode=None,
                  color_temperature=None, rgb=None, hue=None, saturation=None, name=None,
                  fw_ver=None, log=None):
-        self.device_id = device_id
+        # logging
         self.log = DEFAULT_LOGGER
         if log is not None:
             self.log = log
+
+        # callbacks
         self.on_notify = None
         self.on_error = None
-        self.power = power
-        self.brightness = brightness
-        self.color_mode = color_mode
-        self.color_temperature = color_temperature
-        self.rgb = rgb
-        self.hue = hue
-        self.saturation = saturation
-        self.name = name
-        self.fw_ver = fw_ver
+
+        #props
+        self.__device_id = device_id
+        self.__power = power
+        self.__brightness = brightness
+        self.__color_mode = color_mode
+        self.__color_temperature = color_temperature
+        self.__rgb = rgb
+        self.__hue = hue
+        self.__saturation = saturation
+        self.__name = name
+        self.__fw_ver = fw_ver
+
+        # networking
         self.ip_address = ip_address
         self.port = CONTROL_PORT
         self.__sock = None
@@ -189,19 +195,19 @@ class LightBulb:
         params = message['params']
         for prop, value in params.items():
             if prop == 'power':
-                self.power = value
+                self.__power = value
             elif prop == 'bright':
-                self.brightness = value
+                self.__brightness = value
             elif prop == 'color_mode':
-                self.color_mode = int(value)
+                self.__color_mode = int(value)
             elif prop == 'ct':
-                self.color_temperature = int(value)
+                self.__color_temperature = int(value)
             elif prop == 'rbg':
-                self.rgb = int(value)
+                self.__rgb = int(value)
             elif prop == 'hue':
-                self.hue = int(value)
+                self.__hue = int(value)
             elif prop == 'sat':
-                self.saturation = int(value)
+                self.__saturation = int(value)
 
 
     @staticmethod
@@ -299,3 +305,53 @@ class LightBulb:
                     return new_device
         finally:
             sock.close()
+
+
+    @property
+    def device_id(self):
+        return self.__device_id
+
+    
+    @property
+    def power(self):
+        return self.__power
+
+    
+    @property
+    def brightness(self):
+        return self.__brightness
+
+    
+    @property
+    def color_mode(self):
+        return self.__color_mode
+
+
+    @property
+    def color_temperature(self):
+        return self.__color_temperature
+
+
+    @property
+    def rgb(self):
+        return self.__rgb
+
+
+    @property
+    def hue(self):
+        return self.__hue
+
+
+    @property
+    def saturation(self):
+        return self.__saturation
+
+
+    @property
+    def name(self):
+        return self.__name
+
+
+    @property
+    def fw_ver(self):
+        return self.__fw_ver
