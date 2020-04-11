@@ -1,2 +1,7 @@
 venv/
+__pycache__/
+dist/
+yeelight_control.egg-info/
+build/
+env/
 .vscode/
