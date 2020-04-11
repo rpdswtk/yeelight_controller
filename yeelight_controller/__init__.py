@@ -33,6 +33,8 @@ class LightBulb:
         self.log = DEFAULT_LOGGER
         if log is not None:
             self.log = log
+        self.on_notify = None
+        self.on_error = None
         self.power = power
         self.brightness = brightness
         self.color_mode = color_mode
@@ -165,11 +167,15 @@ class LightBulb:
             for message in messages:
                 if message:
                     message_json = json.loads(message)
-                    self.log.debug('MESSAGE RECEIVED: %s', message_json)
                     if 'error' in message_json:
                         self.log.error('ERROR RECEIVED %s', message_json)
+                        if self.on_error:
+                            self.on_error(message_json) # pylint: disable=not-callable
                     elif 'method' in message_json:
+                        self.log.debug('NOTIFY MESSAGE RECEIVED: %s', message_json)
                         self.___process_notification_message(message_json)
+                        if self.on_notify:
+                            self.on_notify(message_json) # pylint: disable=not-callable
         except socket.timeout:
             pass
 
