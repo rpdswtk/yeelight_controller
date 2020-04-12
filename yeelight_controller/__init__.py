@@ -73,9 +73,18 @@ class LightBulb:
             try:
                 self.__sock.connect((self.__ip_address, self.__port))
                 self.__log.debug('CONNECTED')
-                # TODO get props
+                self.__get_props()
             except socket.timeout:
                 self.__log.error("COULD NOT CONNECT", exc_info=True)
+
+
+    def __get_props(self):
+        """Reads property values from device."""
+        msg = self.__create_message(
+            'get_prop',
+            ['power', 'bright', 'ct', 'color_mode', 'rgb', 'hue', 'sat']
+        )
+        self.__send_message(msg)
 
 
     def turn_on(self):
@@ -185,8 +194,26 @@ class LightBulb:
                         self.__process_notification_message(message_json)
                         if self.on_notify:
                             self.on_notify(message_json) # pylint: disable=not-callable
+                    elif 'result' in message_json and message_json['id'] == 1:
+                        # only processing first message result which is always 'get_prop'
+                        self.__save_props(message_json)
         except socket.timeout:
             pass
+
+    def __save_props(self, message: dict):
+        """Stores received prop values in result message.
+
+        Arguments:
+            message {dict}
+        """
+        result = message['result']
+        self.__power = result[0]
+        self.__brightness = result[1]
+        self.__color_temperature = result[2]
+        self.__color_mode = result[3]
+        self.__rgb = result[4]
+        self.__hue = result[5]
+        self.__saturation = result[6]
 
 
     def __process_notification_message(self, message: dict):
