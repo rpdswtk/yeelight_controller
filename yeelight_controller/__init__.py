@@ -29,9 +29,9 @@ class LightBulb:
                  color_temperature=None, rgb=None, hue=None, saturation=None, name=None,
                  fw_ver=None, log=None):
         # logging
-        self.log = DEFAULT_LOGGER
+        self.__log = DEFAULT_LOGGER
         if log is not None:
-            self.log = log
+            self.__log = log
 
         # callbacks
         self.on_notify = None
@@ -50,16 +50,19 @@ class LightBulb:
         self.__fw_ver = fw_ver
 
         # networking
-        self.ip_address = ip_address
-        self.port = CONTROL_PORT
+        self.__ip_address = ip_address
+        self.__port = CONTROL_PORT
         self.__sock = None
-        self.effect = 'smooth'
-        self.duration = 500
+
+        #transition
+        self.__effect = 'smooth'
+        self.__duration = 500
+
         self.connect()
 
 
     def __repr__(self):
-        return 'ID: {} at {}'.format(self.device_id, self.ip_address)
+        return 'ID: {} at {}'.format(self.__device_id, self.__ip_address)
 
 
     def connect(self):
@@ -68,29 +71,51 @@ class LightBulb:
             self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.__sock.settimeout(5)
             try:
-                self.__sock.connect((self.ip_address, self.port))
-                self.log.debug('CONNECTED')
-                # TODO get props
+                self.__sock.connect((self.__ip_address, self.__port))
+                self.__log.debug('CONNECTED')
+                self.__get_props()
             except socket.timeout:
-                self.log.error("COULD NOT CONNECT", exc_info=True)
+                self.__log.error("COULD NOT CONNECT", exc_info=True)
+
+
+    def __get_props(self):
+        """Reads property values from device."""
+        msg = self.__create_message(
+            'get_prop',
+            ['power', 'bright', 'ct', 'color_mode', 'rgb', 'hue', 'sat']
+        )
+        result = self.__send_message(msg)
+        if result:
+            props = result['result']
+            self.__power = props[0]
+            self.__brightness = int(props[1])
+            self.__color_temperature = int(props[2])
+            self.__color_mode = int(props[3])
+            self.__rgb = int(props[4])
+            self.__hue = int(props[5])
+            self.__saturation = int(props[6])
 
 
     def turn_on(self):
         """Turns on the lightbulb."""
         msg = self.__create_message(
             'set_power',
-            ['on', self.effect, self.duration]
+            ['on', self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__power = 'on'
 
 
     def turn_off(self):
         """Turns on the lightbulb."""
         msg = self.__create_message(
             'set_power',
-            ['off', self.effect, self.duration]
+            ['off', self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__power = 'off'
 
 
     def set_brightness(self, brightness: int):
@@ -101,9 +126,11 @@ class LightBulb:
         """
         msg = self.__create_message(
             'set_bright',
-            [brightness, self.effect, self.duration]
+            [brightness, self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__brightness = brightness
 
 
     def toggle(self):
@@ -112,7 +139,12 @@ class LightBulb:
             'toggle',
             []
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            if self.__power == 'on':
+                self.__power = 'off'
+            else:
+                self.__power = 'on'
 
 
     def set_temperature(self, color_temp: int):
@@ -123,9 +155,11 @@ class LightBulb:
         """
         msg = self.__create_message(
             'set_ct_abx',
-            [color_temp, self.effect, self.duration]
+            [color_temp, self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__color_temperature = color_temp
 
 
     def set_rgb(self, red: int, green: int, blue: int):
@@ -139,9 +173,11 @@ class LightBulb:
         color = red * 65536 + green * 256 + blue
         msg = self.__create_message(
             'set_rgb',
-            [color, self.effect, self.duration]
+            [color, self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__rgb = color
 
 
     def set_hsv(self, hue: int, sat: int):
@@ -153,40 +189,53 @@ class LightBulb:
         """
         msg = self.__create_message(
             'set_hsv',
-            [hue, sat, self.effect, self.duration]
+            [hue, sat, self.__effect, self.__duration]
         )
-        self.__send_message(msg)
+        result = self.__send_message(msg)
+        if result and result['result'][0] == 'ok':
+            self.__hue = hue
+            self.__saturation = sat
 
 
-    def __send_message(self, msg: bytes):
-        """Sends message to device.
+    def __send_message(self, msg: dict) -> dict:
+        """Sends command message.
 
-        Arguments:
-            msg {bytes} -- Message encoded in bytes.
+        Args:
+            msg (dict): Message dictionary.
+
+        Returns:
+            dict: Response description.
         """
-        self.log.debug('SENDING MESSAGE: %s', msg.decode().strip())
-        self.__sock.send(msg)
-        try:
-            data, _ = self.__sock.recvfrom(4048)
-            # handling multiple json formatted messages
-            messages = data.decode().split('\r\n')
-            for message in messages:
-                if message:
-                    message_json = json.loads(message)
-                    if 'error' in message_json:
-                        self.log.error('ERROR RECEIVED %s', message_json)
-                        if self.on_error:
-                            self.on_error(message_json) # pylint: disable=not-callable
-                    elif 'method' in message_json:
-                        self.log.debug('NOTIFY MESSAGE RECEIVED: %s', message_json)
-                        self.___process_notification_message(message_json)
-                        if self.on_notify:
-                            self.on_notify(message_json) # pylint: disable=not-callable
-        except socket.timeout:
-            pass
+        self.__log.debug('SENDING MESSAGE: %s', msg)
+        self.__sock.send((json.dumps(msg) + '\r\n').encode())
+        result_message = None
+        while result_message is None:
+            try:
+                data, _ = self.__sock.recvfrom(16 * 1024)
+                # handling multiple json formatted messages
+                messages = data.decode().split('\r\n')
+                for message in messages:
+                    if message:
+                        message_json = json.loads(message)
+                        if 'error' in message_json:
+                            self.__log.error('ERROR RECEIVED %s', message_json)
+                            if self.on_error:
+                                self.on_error(message_json) # pylint: disable=not-callable
+                            return
+                        elif 'method' in message_json:
+                            self.__log.debug('NOTIFY MESSAGE RECEIVED: %s', message_json)
+                            self.__process_notification_message(message_json)
+                            if self.on_notify:
+                                self.on_notify(message_json) # pylint: disable=not-callable
+                        elif 'result' in message_json:
+                            if message_json['id'] == msg['id']:
+                                result_message = message_json
+            except socket.timeout:
+                pass
+        return result_message
 
 
-    def ___process_notification_message(self, message: dict):
+    def __process_notification_message(self, message: dict):
         """Stores received prop values in notification message.
 
         Arguments:
@@ -211,23 +260,14 @@ class LightBulb:
 
 
     @staticmethod
-    def __create_message(method_name: str, params: list) -> bytes:
-        """Creates message for device.
-
-        Arguments:
-            method_name {str}
-            params {list}
-
-        Returns:
-            bytes -- Encoded message.
-        """
+    def __create_message(method_name: str, params: list) -> dict:
         LightBulb.current_message_id += 1
         msg = {
             'id': LightBulb.current_message_id,
             'method': method_name,
             'params': params
         }
-        return (json.dumps(msg) + '\r\n').encode()
+        return msg
 
 
     @staticmethod
@@ -355,3 +395,13 @@ class LightBulb:
     @property
     def fw_ver(self):
         return self.__fw_ver
+
+
+    @property
+    def ip_address(self):
+        return self.__ip_address
+
+
+    @property
+    def port(self):
+        return self.__port
